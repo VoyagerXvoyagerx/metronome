@@ -1,45 +1,49 @@
 # Metronome
 
-一个简洁优雅的桌面节拍器，专为尤克里里练习设计，采用 Pygame 底层混音实现稳定低延迟的发声。
+A clean and elegant desktop metronome designed for ukulele practice, powered by Pygame's low-level mixer for stable, low-latency audio.
 
-## 功能特性
+## Features
 
-- **可视化节拍指示**：每小节第一拍红色高亮，其余拍蓝色显示
-- **BPM 范围**：40 ~ 180 BPM，滑块拖动或快捷按钮一键切换
-- **多种拍号**：支持 2/4、3/4、4/4、6/8 拍
-- **空格键快捷启停**：无需鼠标即可控制
-- **Win11 稳定发声**：使用 Pygame 混音器替代系统提示音，避免被系统抑制
-- **精准计时**：基于 `time.perf_counter()` 的自校准循环，节拍稳定不漂移
+- **Visual beat indicator**: First beat of each measure highlighted in red, remaining beats in blue
+- **BPM range**: 40 ~ 180 BPM, adjustable via slider or quick-select buttons
+- **Multiple time signatures**: Supports 2/4, 3/4, 4/4, and 6/8
+- **Spacebar shortcut**: Start/stop without touching the mouse
+- **Stable on Win11**: Uses Pygame mixer instead of system beeps to avoid OS suppression
+- **Accurate timing**: Self-calibrating loop based on `time.perf_counter()` keeps the beat steady
 
-## 安装依赖
+## Installation
 
 ```bash
-pip install pygame
+pip install -r requirements.txt
 ```
 
-## 运行
+## Usage
 
 ```bash
 python metronome.py
 ```
 
-## 环境要求
+## Requirements
 
 - Python 3.x
-- Windows 10/11（推荐，使用 Pygame 底层混音）
+- Windows 10/11 (recommended, for Pygame low-latency audio)
 
-## 界面预览
+## Preview
 
-- 大字体 BPM 显示
-- 节拍灯实时反馈
-- 快捷速度按钮：50 / 60 / 70 / 80 / 90 / 100 / 110 / 120
+- Large-font BPM display
+- Real-time beat LEDs
+- Quick-speed buttons: 50 / 60 / 70 / 80 / 90 / 100 / 110 / 120
 
-## 技术细节
+## Technical Details
 
-- 使用 `pygame.mixer.Sound` 播放内存中的 WAV 音频，无文件 IO 延迟
-- 合成音频时加入音高下坠（Pitch Drop）和非整数倍泛音，模拟塑料电子节拍器的干脆质感
-- 多线程分离 UI 与音频逻辑，避免界面卡顿
+- Uses `pygame.mixer.Sound` to play in-memory WAV audio with zero file-I/O latency
+- Synthesized click includes pitch drop and inharmonic overtones to mimic the crisp, dry sound of a plastic electronic metronome
+- Multi-threaded architecture separates UI and audio logic to prevent interface stuttering
 
 ## License
 
 MIT
+
+---
+
+*For the Chinese version, see [README_zh.md](README_zh.md).*
