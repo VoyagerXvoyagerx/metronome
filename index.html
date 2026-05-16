@@ -288,6 +288,9 @@
         const beatRadios = document.querySelectorAll('input[name="beats"]');
         const quickBtns = document.querySelectorAll('.quick-btn');
 
+        let bufferHigh = null;
+        let bufferLow = null;
+
         function initAudio() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -295,85 +298,65 @@
             if (audioCtx.state === 'suspended') {
                 audioCtx.resume();
             }
-        }
-
-        // 预生成噪声 buffer（复用，避免高频率播放时 GC 压力导致卡顿）
-        function getNoiseBuffer() {
-            if (noiseBufferCache) return noiseBufferCache;
-            const duration = 0.05; // 稍长一点，确保覆盖所有播放时长
-            const bufferSize = Math.ceil(audioCtx.sampleRate * duration);
-            noiseBufferCache = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-            const output = noiseBufferCache.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) {
-                const nt = i / audioCtx.sampleRate;
-                const env = Math.exp(-350 * nt);
-                output[i] = (Math.random() * 2 - 1) * env;
+            // 预生成两种声音 buffer（与 pygame 版完全一致，避免 OscillatorNode 相位随机性）
+            if (!bufferHigh) {
+                bufferHigh = generateClickBuffer(1200, 0.035, 0.90, 0.25);
             }
-            return noiseBufferCache;
+            if (!bufferLow) {
+                bufferLow = generateClickBuffer(800, 0.035, 0.85, 0.15);
+            }
         }
 
-        // 精确还原 metronome.py 的合成参数
-        // 关键修复：接收 time 参数，确保即使调度延迟也能保持包络一致性
+        // 复现 metronome.py 的 generate_click_pygame 算法，生成静态 AudioBuffer
+        // 关键：预生成波形后，每次播放都是完全一致的样本，彻底消除音量波动
+        function generateClickBuffer(freq, duration, volume, noiseAmount) {
+            const sampleRate = audioCtx.sampleRate;
+            const numSamples = Math.ceil(sampleRate * duration);
+            const buffer = audioCtx.createBuffer(1, numSamples, sampleRate);
+            const data = buffer.getChannelData(0);
+
+            for (let i = 0; i < numSamples; i++) {
+                const t = i / sampleRate;
+
+                // 极短的起音 + 更快的指数衰减
+                const attack = Math.min(1.0, t / 0.0015);
+                const envelope = attack * Math.exp(-140 * t);
+
+                // 音高下坠 (Pitch Drop)
+                const pitchDrop = Math.exp(-300 * t);
+                const currentFreq = freq * (1.0 + 0.35 * pitchDrop);
+
+                // 主频 + 非整数倍泛音
+                const tone = (
+                    0.78 * Math.sin(2 * Math.PI * currentFreq * t)
+                    + 0.22 * Math.sin(2 * Math.PI * currentFreq * 1.55 * t)
+                );
+
+                // 极短噪声
+                const noiseEnv = Math.exp(-350 * t);
+                const noise = (Math.random() * 2 - 1) * noiseAmount * noiseEnv;
+
+                let sample = (tone * envelope + noise) * volume;
+
+                // 防止削波
+                sample = Math.max(-1.0, Math.min(1.0, sample));
+                data[i] = sample;
+            }
+
+            return buffer;
+        }
+
+        // 播放预先生成的 buffer，与 pygame 版行为完全一致
         function playClick(beatIndex, time) {
             if (!audioCtx) return;
 
-            // 确保时间不会落后太多，但保持包络的相对时间一致性
-            const t = Math.max(time, audioCtx.currentTime);
-            const isAccent = beatIndex === 0;
-            const baseFreq = isAccent ? 1200 : 800;
-            const duration = 0.035;
-            const volume = isAccent ? 0.90 : 0.85;
-            const noiseAmount = isAccent ? 0.25 : 0.15;
+            const buffer = (beatIndex === 0) ? bufferHigh : bufferLow;
+            if (!buffer) return;
 
-            // --- 主频振荡器 (0.78 权重) ---
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = 'sine';
-
-            // 精确还原 pitch drop: freq * (1.0 + 0.35 * exp(-300 * t))
-            const startFreq = baseFreq * 1.35;
-            const endFreq = baseFreq;
-            osc.frequency.setValueAtTime(startFreq, t);
-            osc.frequency.exponentialRampToValueAtTime(endFreq, t + duration);
-
-            // 精确还原包络: attack = min(1.0, t/0.0015); envelope = attack * exp(-140 * t)
-            gain.gain.setValueAtTime(0, t);
-            gain.gain.linearRampToValueAtTime(volume * 0.78, t + 0.0015);
-            gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
-
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.start(t);
-            osc.stop(t + duration);
-
-            // --- 泛音振荡器 (0.22 权重, 1.55 倍频) ---
-            const osc2 = audioCtx.createOscillator();
-            const gain2 = audioCtx.createGain();
-            osc2.type = 'sine';
-            const harmStart = baseFreq * 1.55 * 1.35;
-            const harmEnd = baseFreq * 1.55;
-            osc2.frequency.setValueAtTime(harmStart, t);
-            osc2.frequency.exponentialRampToValueAtTime(harmEnd, t + duration);
-
-            gain2.gain.setValueAtTime(0, t);
-            gain2.gain.linearRampToValueAtTime(volume * 0.22, t + 0.0015);
-            gain2.gain.exponentialRampToValueAtTime(0.0001, t + duration);
-
-            osc2.connect(gain2);
-            gain2.connect(audioCtx.destination);
-            osc2.start(t);
-            osc2.stop(t + duration);
-
-            // --- 噪声 (模拟塑料打击声，使用预生成 buffer) ---
-            const noise = audioCtx.createBufferSource();
-            noise.buffer = getNoiseBuffer();
-            const noiseGain = audioCtx.createGain();
-            noiseGain.gain.setValueAtTime(volume * noiseAmount, t);
-            noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + duration * 0.6);
-            noise.connect(noiseGain);
-            noiseGain.connect(audioCtx.destination);
-            noise.start(t);
-            noise.stop(t + duration);
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioCtx.destination);
+            source.start(time);
         }
 
         function updateLights(beatIndex) {
