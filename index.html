@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>尤克里里节拍器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+            background: #F5F5F7;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #1D1D1F;
+        }
+        .container {
+            background: #F5F5F7;
+            width: 420px;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #1D1D1F;
+        }
+        .bpm-display {
+            font-size: 72px;
+            font-weight: bold;
+            line-height: 1;
+            margin: 20px 0 5px;
+        }
+        .bpm-label {
+            font-size: 14px;
+            color: #86868B;
+            margin-bottom: 20px;
+        }
+        .lights {
+            display: flex;
+            justify-content: center;
+            gap: 14px;
+            margin: 20px 0;
+            min-height: 28px;
+        }
+        .light {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #E5E5EA;
+            transition: background 0.05s;
+        }
+        .light.active-accent {
+            background: #FF3B30;
+            box-shadow: 0 0 10px rgba(255, 59, 48, 0.5);
+        }
+        .light.active-beat {
+            background: #007AFF;
+            box-shadow: 0 0 10px rgba(0, 122, 255, 0.5);
+        }
+        .slider-container {
+            margin: 25px 0;
+            padding: 0 10px;
+        }
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #D1D1D6;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #007AFF;
+            cursor: pointer;
+            border: 3px solid #fff;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #007AFF;
+            cursor: pointer;
+            border: 3px solid #fff;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
+        .quick-buttons {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin: 15px 10px;
+        }
+        .quick-btn {
+            padding: 8px 0;
+            border: 1px solid #E5E5EA;
+            background: #fff;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            color: #1D1D1F;
+            transition: all 0.15s;
+        }
+        .quick-btn:hover {
+            background: #F2F2F7;
+            border-color: #D1D1D6;
+        }
+        .beat-selector {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+        .beat-selector label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 6px;
+            transition: background 0.15s;
+        }
+        .beat-selector label:hover {
+            background: #E5E5EA;
+        }
+        .beat-selector input[type="radio"] {
+            width: 16px;
+            height: 16px;
+            accent-color: #007AFF;
+        }
+        .play-btn {
+            width: 200px;
+            padding: 14px 0;
+            margin: 20px auto;
+            border: none;
+            border-radius: 12px;
+            font-size: 17px;
+            font-weight: bold;
+            cursor: pointer;
+            color: white;
+            background: #007AFF;
+            transition: background 0.2s, transform 0.1s;
+            font-family: inherit;
+        }
+        .play-btn:hover {
+            background: #0056b3;
+        }
+        .play-btn:active {
+            transform: scale(0.97);
+        }
+        .play-btn.stopping {
+            background: #FF3B30;
+        }
+        .play-btn.stopping:hover {
+            background: #cc2e26;
+        }
+        .hint {
+            font-size: 11px;
+            color: #86868B;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="title">尤克里里节拍器</div>
+        <div class="bpm-display" id="bpmDisplay">80</div>
+        <div class="bpm-label">BPM</div>
+        
+        <div class="lights" id="lights"></div>
+        
+        <div class="slider-container">
+            <input type="range" id="bpmSlider" min="40" max="180" value="80">
+        </div>
+        
+        <div class="quick-buttons">
+            <button class="quick-btn" data-bpm="50">50</button>
+            <button class="quick-btn" data-bpm="60">60</button>
+            <button class="quick-btn" data-bpm="70">70</button>
+            <button class="quick-btn" data-bpm="80">80</button>
+            <button class="quick-btn" data-bpm="90">90</button>
+            <button class="quick-btn" data-bpm="100">100</button>
+            <button class="quick-btn" data-bpm="110">110</button>
+            <button class="quick-btn" data-bpm="120">120</button>
+        </div>
+        
+        <div class="beat-selector">
+            <span>节拍:</span>
+            <label><input type="radio" name="beats" value="2"> 2/4</label>
+            <label><input type="radio" name="beats" value="3"> 3/4</label>
+            <label><input type="radio" name="beats" value="4" checked> 4/4</label>
+            <label><input type="radio" name="beats" value="6"> 6/8</label>
+        </div>
+        
+        <button class="play-btn" id="playBtn">▶ 启 动 (空格)</button>
+        <div class="hint">Web Audio 稳定版：浏览器底层混音 | 按空格键快捷启停</div>
+    </div>
+
+    <script>
+        // 状态
+        let bpm = 80;
+        let beatsPerMeasure = 4;
+        let currentBeat = 0;
+        let isPlaying = false;
+        let audioCtx = null;
+        let nextNoteTime = 0;
+        let timerID = null;
+        let lookahead = 25.0; // ms
+        let scheduleAheadTime = 0.1; // s
+
+        // DOM
+        const bpmDisplay = document.getElementById('bpmDisplay');
+        const bpmSlider = document.getElementById('bpmSlider');
+        const lightsContainer = document.getElementById('lights');
+        const playBtn = document.getElementById('playBtn');
+        const beatRadios = document.querySelectorAll('input[name="beats"]');
+        const quickBtns = document.querySelectorAll('.quick-btn');
+
+        // 初始化 AudioContext
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // 生成 click 声音（类似原版的合成声音）
+        function playClick(beatIndex) {
+            if (!audioCtx) return;
+            
+            const t = nextNoteTime;
+            const isAccent = beatIndex === 0;
+            const baseFreq = isAccent ? 1200 : 800;
+            const duration = 0.035;
+            const volume = isAccent ? 0.9 : 0.85;
+            
+            // 主振荡器
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(baseFreq, t);
+            // 音高下坠
+            osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.8, t + duration);
+            
+            // 包络：极短起音 + 快速指数衰减
+            gain.gain.setValueAtTime(0, t);
+            gain.gain.linearRampToValueAtTime(volume, t + 0.0015);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start(t);
+            osc.stop(t + duration);
+            
+            // 泛音
+            const osc2 = audioCtx.createOscillator();
+            const gain2 = audioCtx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(baseFreq * 1.55, t);
+            osc2.frequency.exponentialRampToValueAtTime(baseFreq * 1.55 * 0.8, t + duration);
+            gain2.gain.setValueAtTime(0, t);
+            gain2.gain.linearRampToValueAtTime(volume * 0.22, t + 0.001);
+            gain2.gain.exponentialRampToValueAtTime(0.001, t + duration * 0.8);
+            osc2.connect(gain2);
+            gain2.connect(audioCtx.destination);
+            osc2.start(t);
+            osc2.stop(t + duration);
+            
+            // 噪声（模拟塑料打击声）
+            const bufferSize = audioCtx.sampleRate * duration;
+            const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                output[i] = (Math.random() * 2 - 1) * Math.exp(-350 * (i / audioCtx.sampleRate));
+            }
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = noiseBuffer;
+            const noiseGain = audioCtx.createGain();
+            noiseGain.gain.setValueAtTime(volume * (isAccent ? 0.25 : 0.15), t);
+            noiseGain.gain.exponentialRampToValueAtTime(0.001, t + duration * 0.6);
+            noise.connect(noiseGain);
+            noiseGain.connect(audioCtx.destination);
+            noise.start(t);
+            noise.stop(t + duration);
+        }
+
+        // 更新灯光
+        function updateLights(beatIndex) {
+            const lights = document.querySelectorAll('.light');
+            lights.forEach((light, i) => {
+                light.classList.remove('active-accent', 'active-beat');
+                if (i === beatIndex) {
+                    light.classList.add(beatIndex === 0 ? 'active-accent' : 'active-beat');
+                }
+            });
+        }
+
+        // 创建灯光
+        function createLights() {
+            lightsContainer.innerHTML = '';
+            for (let i = 0; i < beatsPerMeasure; i++) {
+                const div = document.createElement('div');
+                div.className = 'light';
+                lightsContainer.appendChild(div);
+            }
+        }
+
+        // 调度器
+        function scheduler() {
+            while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
+                scheduleNote(currentBeat, nextNoteTime);
+                nextNote();
+            }
+            timerID = setTimeout(scheduler, lookahead);
+        }
+
+        function scheduleNote(beatIndex, time) {
+            // 使用 setTimeout 来同步 UI，因为 requestAnimationFrame 不够精确
+            const delay = (time - audioCtx.currentTime) * 1000;
+            setTimeout(() => {
+                if (isPlaying) {
+                    updateLights(beatIndex);
+                }
+            }, Math.max(0, delay));
+            
+            playClick(beatIndex);
+        }
+
+        function nextNote() {
+            const secondsPerBeat = 60.0 / bpm;
+            nextNoteTime += secondsPerBeat;
+            currentBeat = (currentBeat + 1) % beatsPerMeasure;
+        }
+
+        // 播放/停止
+        function togglePlay() {
+            if (isPlaying) {
+                stop();
+            } else {
+                play();
+            }
+        }
+
+        function play() {
+            initAudio();
+            isPlaying = true;
+            currentBeat = 0;
+            nextNoteTime = audioCtx.currentTime + 0.05;
+            scheduler();
+            playBtn.textContent = '■ 停 止 (空格)';
+            playBtn.classList.add('stopping');
+        }
+
+        function stop() {
+            isPlaying = false;
+            clearTimeout(timerID);
+            playBtn.textContent = '▶ 启 动 (空格)';
+            playBtn.classList.remove('stopping');
+            // 重置灯光
+            document.querySelectorAll('.light').forEach(l => {
+                l.classList.remove('active-accent', 'active-beat');
+            });
+        }
+
+        // 事件监听
+        bpmSlider.addEventListener('input', (e) => {
+            bpm = parseInt(e.target.value);
+            bpmDisplay.textContent = bpm;
+        });
+
+        quickBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                bpm = parseInt(btn.dataset.bpm);
+                bpmSlider.value = bpm;
+                bpmDisplay.textContent = bpm;
+            });
+        });
+
+        beatRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                beatsPerMeasure = parseInt(e.target.value);
+                currentBeat = 0;
+                createLights();
+            });
+        });
+
+        playBtn.addEventListener('click', togglePlay);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                togglePlay();
+            }
+        });
+
+        // 初始化
+        createLights();
+    </script>
+</body>
+</html>
