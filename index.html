@@ -275,8 +275,11 @@
         let audioCtx = null;
         let nextNoteTime = 0;
         let timerID = null;
-        const lookahead = 25.0; // ms
-        const scheduleAheadTime = 0.1; // s
+        let rafID = null;
+        const lookahead = 10.0; // ms: 更频繁地检查调度
+        const scheduleAheadTime = 0.2; // s: 增加提前量，确保高 BPM 也能稳定调度
+        let notesInQueue = []; // 已调度音符队列，用于 UI 同步
+        let noiseBufferCache = null; // 预生成噪声 buffer，避免重复创建
 
         const bpmDisplay = document.getElementById('bpmDisplay');
         const bpmSlider = document.getElementById('bpmSlider');
@@ -294,11 +297,28 @@
             }
         }
 
+        // 预生成噪声 buffer（复用，避免高频率播放时 GC 压力导致卡顿）
+        function getNoiseBuffer() {
+            if (noiseBufferCache) return noiseBufferCache;
+            const duration = 0.05; // 稍长一点，确保覆盖所有播放时长
+            const bufferSize = Math.ceil(audioCtx.sampleRate * duration);
+            noiseBufferCache = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const output = noiseBufferCache.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                const nt = i / audioCtx.sampleRate;
+                const env = Math.exp(-350 * nt);
+                output[i] = (Math.random() * 2 - 1) * env;
+            }
+            return noiseBufferCache;
+        }
+
         // 精确还原 metronome.py 的合成参数
-        function playClick(beatIndex) {
+        // 关键修复：接收 time 参数，确保即使调度延迟也能保持包络一致性
+        function playClick(beatIndex, time) {
             if (!audioCtx) return;
 
-            const t = nextNoteTime;
+            // 确保时间不会落后太多，但保持包络的相对时间一致性
+            const t = Math.max(time, audioCtx.currentTime);
             const isAccent = beatIndex === 0;
             const baseFreq = isAccent ? 1200 : 800;
             const duration = 0.035;
@@ -311,7 +331,6 @@
             osc.type = 'sine';
 
             // 精确还原 pitch drop: freq * (1.0 + 0.35 * exp(-300 * t))
-            // t=0: freq*1.35, 然后指数衰减到 freq
             const startFreq = baseFreq * 1.35;
             const endFreq = baseFreq;
             osc.frequency.setValueAtTime(startFreq, t);
@@ -319,9 +338,7 @@
 
             // 精确还原包络: attack = min(1.0, t/0.0015); envelope = attack * exp(-140 * t)
             gain.gain.setValueAtTime(0, t);
-            // 起音 1.5ms
             gain.gain.linearRampToValueAtTime(volume * 0.78, t + 0.0015);
-            // 指数衰减
             gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
 
             osc.connect(gain);
@@ -347,20 +364,11 @@
             osc2.start(t);
             osc2.stop(t + duration);
 
-            // --- 噪声 (模拟塑料打击声) ---
-            const bufferSize = Math.ceil(audioCtx.sampleRate * duration);
-            const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-            const output = noiseBuffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) {
-                const nt = i / audioCtx.sampleRate;
-                // noise_env = exp(-350 * t)
-                const env = Math.exp(-350 * nt);
-                output[i] = (Math.random() * 2 - 1) * noiseAmount * env;
-            }
+            // --- 噪声 (模拟塑料打击声，使用预生成 buffer) ---
             const noise = audioCtx.createBufferSource();
-            noise.buffer = noiseBuffer;
+            noise.buffer = getNoiseBuffer();
             const noiseGain = audioCtx.createGain();
-            noiseGain.gain.setValueAtTime(volume, t);
+            noiseGain.gain.setValueAtTime(volume * noiseAmount, t);
             noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + duration * 0.6);
             noise.connect(noiseGain);
             noiseGain.connect(audioCtx.destination);
@@ -387,7 +395,13 @@
             }
         }
 
+        // 核心调度器：使用更大的 scheduleAheadTime 和更频繁的检查
         function scheduler() {
+            // 时间漂移保护：如果落后超过 100ms，重新同步到当前时间
+            if (nextNoteTime < audioCtx.currentTime - 0.1) {
+                nextNoteTime = audioCtx.currentTime + 0.02;
+            }
+
             while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
                 scheduleNote(currentBeat, nextNoteTime);
                 nextNote();
@@ -396,13 +410,21 @@
         }
 
         function scheduleNote(beatIndex, time) {
-            const delay = (time - audioCtx.currentTime) * 1000;
-            setTimeout(() => {
-                if (isPlaying) {
-                    updateLights(beatIndex);
-                }
-            }, Math.max(0, delay));
-            playClick(beatIndex);
+            // 将音符加入队列，供 requestAnimationFrame UI 循环消费
+            notesInQueue.push({ beatIndex, time });
+            playClick(beatIndex, time);
+        }
+
+        // 使用 requestAnimationFrame 更新 UI，避免 setTimeout 堆积导致的抖动
+        function uiLoop() {
+            if (!isPlaying) return;
+            const currentTime = audioCtx.currentTime;
+            // 处理所有已经到达播放时间的音符
+            while (notesInQueue.length > 0 && notesInQueue[0].time <= currentTime) {
+                const note = notesInQueue.shift();
+                updateLights(note.beatIndex);
+            }
+            rafID = requestAnimationFrame(uiLoop);
         }
 
         function nextNote() {
@@ -423,8 +445,10 @@
             initAudio();
             isPlaying = true;
             currentBeat = 0;
+            notesInQueue = [];
             nextNoteTime = audioCtx.currentTime + 0.05;
             scheduler();
+            rafID = requestAnimationFrame(uiLoop);
             playBtn.textContent = i18n[currentLang].stop;
             playBtn.classList.add('stopping');
         }
@@ -432,6 +456,8 @@
         function stop() {
             isPlaying = false;
             clearTimeout(timerID);
+            cancelAnimationFrame(rafID);
+            notesInQueue = [];
             playBtn.textContent = i18n[currentLang].play;
             playBtn.classList.remove('stopping');
             document.querySelectorAll('.light').forEach(l => {
