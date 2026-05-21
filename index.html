@@ -188,6 +188,29 @@
         .play-btn.stopping:hover {
             background: #cc2e26;
         }
+        .volume-container {
+            margin-top: 20px;
+            margin-bottom: 5px;
+            padding: 0 25px;
+        }
+        .volume-label {
+            font-size: 12px;
+            color: #86868B;
+            margin-bottom: 6px;
+        }
+        #volumeSlider {
+            height: 4px;
+        }
+        #volumeSlider::-webkit-slider-thumb {
+            width: 18px;
+            height: 18px;
+            border-width: 2px;
+        }
+        #volumeSlider::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-width: 2px;
+        }
     </style>
 </head>
 <body>
@@ -223,6 +246,11 @@
         </div>
         
         <button class="play-btn" id="playBtn" data-i18n="play">▶ 启 动 (空格)</button>
+        
+        <div class="volume-container">
+            <div class="volume-label"><span data-i18n="volumeLabel">音量:</span> <span id="volumeValue">100%</span></div>
+            <input type="range" id="volumeSlider" min="0" max="100" value="100">
+        </div>
     </div>
 
     <script>
@@ -231,12 +259,14 @@
             zh: {
                 title: '节拍器',
                 beatLabel: '节拍:',
+                volumeLabel: '音量:',
                 play: '▶ 启 动 (空格)',
                 stop: '■ 停 止 (空格)'
             },
             en: {
                 title: 'Metronome',
                 beatLabel: 'Time:',
+                volumeLabel: 'Volume:',
                 play: '▶ START (Space)',
                 stop: '■ STOP (Space)'
             }
@@ -288,6 +318,7 @@
         const beatRadios = document.querySelectorAll('input[name="beats"]');
         const quickBtns = document.querySelectorAll('.quick-btn');
 
+        let gainNode = null;
         let bufferHigh = null;
         let bufferLow = null;
 
@@ -297,6 +328,11 @@
             }
             if (audioCtx.state === 'suspended') {
                 audioCtx.resume();
+            }
+            if (!gainNode) {
+                gainNode = audioCtx.createGain();
+                gainNode.connect(audioCtx.destination);
+                gainNode.gain.value = 1.0;
             }
             // 预生成两种声音 buffer（与 pygame 版完全一致，避免 OscillatorNode 相位随机性）
             if (!bufferHigh) {
@@ -355,7 +391,7 @@
 
             const source = audioCtx.createBufferSource();
             source.buffer = buffer;
-            source.connect(audioCtx.destination);
+            source.connect(gainNode || audioCtx.destination);
             source.start(time);
         }
 
@@ -468,6 +504,16 @@
                 currentBeat = 0;
                 createLights();
             });
+        });
+
+        const volumeSlider = document.getElementById('volumeSlider');
+        const volumeValue = document.getElementById('volumeValue');
+        volumeSlider.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            if (gainNode) {
+                gainNode.gain.value = val / 100;
+            }
+            volumeValue.textContent = val + '%';
         });
 
         playBtn.addEventListener('click', togglePlay);
